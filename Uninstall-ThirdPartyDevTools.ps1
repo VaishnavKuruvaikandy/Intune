@@ -1,28 +1,36 @@
+#####################################################################################################################################################################>
+# <copyright company="Microsoft">
+#   Copyright (c) Microsoft Corporation.  All rights reserved.
+# </copyright>
+#
+# .SYNOPSIS
+#  Uninstalls third-party developer tools installed in Dev Ready Image:
+#    - Python 3.13 (winget)
+#    - Node.js LTS (winget)
+#    - nvm-windows (%ProgramData%\nvm + %ProgramFiles%\nodejs symlink)
+#    - oh-my-posh (%ProgramFiles%\oh-my-posh) + Cascadia fonts
+#    - uv tools (%ProgramData%\UVTools)
+#    - Ubuntu WSL (VHDX, folder, and registry keys)
+#
+#  After removing Node.js, reinstalls GitHub Copilot CLI as a standalone
+#  exe (winget: GitHub.Copilot) and patches the npm shims (copilot.ps1,
+#  copilot.cmd) so the 'copilot' command and Start Menu shortcut keep
+#  working without Node.js.
+#
+# .REQUIREMENTS
+#   1). Run from an elevated PowerShell window (Windows PowerShell 5.1 or PowerShell 7+).
+#   2). A reboot is recommended after execution.
+#
+# .EXAMPLE
+#   .\Uninstall-ThirdPartyTools.ps1
+#####################################################################################################################################################################>
+
 #Requires -Version 5.1
 #Requires -RunAsAdministrator
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $ProgressPreference    = "SilentlyContinue"
-
-# Resolve winget.exe path for Intune/system context execution
-$script:WingetExe = $null
-try
-{
-    $wingetPath = Get-Item "$env:ProgramFiles\WindowsApps\Microsoft.DesktopAppInstaller_*\winget.exe" -ErrorAction SilentlyContinue | Select-Object -Last 1
-    if ($wingetPath)
-    {
-        $script:WingetExe = $wingetPath.FullName
-    }
-    else
-    {
-        $script:WingetExe = "winget"
-    }
-}
-catch
-{
-    $script:WingetExe = "winget"
-}
 
 #region Helpers
 
@@ -57,7 +65,7 @@ function Test-WinGetPackageInstalled([string]$Id)
     # winget can exit 0 even when nothing matches, so parse the output instead
     # of trusting $LASTEXITCODE. Pass --accept-source-agreements to avoid the
     # first-run interactive source-acceptance prompt on a fresh image.
-    $output = & $script:WingetExe list --id $Id --exact --source winget --accept-source-agreements --disable-interactivity 2>&1 | Out-String
+    $output = winget list --id $Id --exact --source winget --accept-source-agreements --disable-interactivity 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) { return $false }
     if ($output -match 'No installed package found') { return $false }
     # winget prints the package id in the result table only when a match exists.
@@ -249,6 +257,7 @@ function Find-ItemsToRemove
         }
     }
 
+
     # --- Windows Terminal settings with Cascadia Mono NF font ---
     $items.WTSettingsFiles = @()
     $wtPackage = "Microsoft.WindowsTerminal_8wekyb3d8bbwe"
@@ -374,6 +383,7 @@ function Show-RemovalPlan($items)
         }
     }
 
+
     if ($items.WTSettingsFiles.Count -gt 0)
     {
         $hasAnything = $true
@@ -412,7 +422,7 @@ function Uninstall-WingetPackages($packages)
     foreach ($pkg in $packages)
     {
         Write-Host "  Uninstalling: $($pkg.Name) ($($pkg.Id)) via winget..."
-        & $script:WingetExe uninstall --id $pkg.Id --exact --source winget --silent --disable-interactivity --accept-source-agreements 2>&1 | Out-Host
+        winget uninstall --id $pkg.Id --exact --source winget --silent --disable-interactivity --accept-source-agreements 2>&1 | Out-Host
         if ($LASTEXITCODE -eq 0)
         {
             Write-Host "  [OK] $($pkg.Name) uninstalled." -ForegroundColor Green
@@ -549,7 +559,7 @@ function Remove-Files($files)
 function Install-StandaloneCopilotCli
 {
     Write-Host "  Installing standalone GitHub Copilot CLI (winget)..."
-    & $script:WingetExe install --id GitHub.Copilot --exact --source winget --accept-package-agreements --accept-source-agreements --disable-interactivity 2>&1 | Out-Host
+    winget install --id GitHub.Copilot --exact --source winget --accept-package-agreements --accept-source-agreements --disable-interactivity 2>&1 | Out-Host
 
     # winget portable installs create a symlink in WinGet\Links
     $copilotExe = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\copilot.exe"
